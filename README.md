@@ -1,86 +1,143 @@
 # Liquid Staking Protocol
 
-Production-grade liquid staking protocol with full on-chain + off-chain stack. Built as a portfolio project demonstrating end-to-end DeFi engineering: smart contracts, indexing, backend services, dApp frontend.
+[![Contracts CI](https://github.com/snowdaily/defi-staking-platform/actions/workflows/contracts.yml/badge.svg)](https://github.com/snowdaily/defi-staking-platform/actions/workflows/contracts.yml)
+[![Backend CI](https://github.com/snowdaily/defi-staking-platform/actions/workflows/backend.yml/badge.svg)](https://github.com/snowdaily/defi-staking-platform/actions/workflows/backend.yml)
+[![Frontend CI](https://github.com/snowdaily/defi-staking-platform/actions/workflows/frontend.yml/badge.svg)](https://github.com/snowdaily/defi-staking-platform/actions/workflows/frontend.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Solidity](https://img.shields.io/badge/Solidity-0.8.24-363636?logo=solidity)](https://soliditylang.org/)
+[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)](#testing)
+
+Production-grade liquid staking protocol — full on-chain + off-chain stack in a single repo. Built to demonstrate end-to-end DeFi engineering: secure smart contracts, reorg-aware indexing, signing/gas-aware backend services, and a polished dApp.
+
+---
 
 ## What It Does
 
-Users deposit an ERC-20 → receive a yield-bearing liquid staking token (`stTKN`). Underlying assets accumulate rewards (pushed by an operator). Holders can redeem at any time at the current exchange rate.
+Users deposit an ERC-20 and receive a yield-bearing liquid staking token (`stTKN`). The vault accumulates rewards (pushed by an operator), and holders can redeem at the current exchange rate at any time.
 
-ERC-4626 compliant. Reward-bearing model (exchange rate increases over time, no rebasing). Inflation-attack resistant via OpenZeppelin's virtual shares offset.
+- **ERC-4626 compliant** vault interface
+- **Reward-bearing** model — exchange rate goes up over time (no rebasing, simpler DeFi composability)
+- **Inflation-attack resistant** via OpenZeppelin virtual-shares offset
+- **Pausable** with always-callable `emergencyWithdraw` so admin pause cannot lock user funds
 
-## Stack
-
-| Layer | Tech |
-|-------|------|
-| Contracts | Solidity 0.8.24, Foundry, OpenZeppelin v5 |
-| Indexer | Go 1.21+, PostgreSQL, go-ethereum |
-| API | Go (REST via chi) |
-| Reward Bot | Go (cron, EIP-1559 gas strategy, eth_call simulation) |
-| Subgraph | The Graph (parallel implementation) |
-| Frontend | Next.js 14, TypeScript, wagmi v2, viem, RainbowKit, Tailwind |
-| Devnet | Anvil, Docker Compose |
-| CI | GitHub Actions (forge build/test/coverage, Slither, go vet/test, pnpm lint/typecheck/build) |
-| Monitoring | Prometheus, Grafana |
-
-## What's In Each Package
+## Architecture
 
 ```
-contracts/    Solidity contracts + Foundry tests
-  src/        StakingVault.sol, RewardDistributor.sol
-  test/       49 tests: unit, fuzz (5 properties × 256 runs), invariant (3 × 128k calls)
-  script/     Deploy.s.sol — full local + testnet deploy
-backend/      Go monorepo (go 1.21)
-  cmd/indexer/      WS event subscription, reorg-aware ingestion
-  cmd/api/          REST: /tvl, /apr, /users/:addr/{position,history}, /rewards/recent
-  cmd/rewardbot/    Cron-based reward push with simulation, gas cap, dry-run
-  internal/chain/   ethclient wrapper + EIP-1559 TxSender + Signer abstraction
-  internal/db/      pgx pool + embedded migrations + typed queries
-  migrations/       SQL schema (events, indexer state, block trail, rate snapshots)
-frontend/     Next.js 14 dApp
-  app/        Stake / unstake / position / history
-  lib/        wagmi config, ABIs, API client, formatting helpers
-  components/ StatsHeader, StakeCard, PositionCard, HistoryList
-subgraph/     The Graph subgraph (schema + AssemblyScript mappings)
-docs/
-  architecture.md       System overview + design decisions
-  security.md           Threat model + attack vectors + mitigations
-  audit-checklist.md    Pre-deploy gate
-  gas-report.md         Gas costs + optimisation notes
-  local-dev.md          End-to-end local setup
+┌─────────┐  deposit/redeem   ┌──────────────┐
+│  User   │ ─────────────────►│ StakingVault │  (ERC-4626 + AccessControl + Pausable)
+│ Wallet  │ ◄──────────────── │  + stTKN     │
+└─────────┘     stTKN         └──────┬───────┘
+                                     │ events
+                              ┌──────▼─────────┐
+                              │ Go Indexer     │──► PostgreSQL
+                              │ (reorg-aware)  │
+                              └──────┬─────────┘
+                                     │
+┌─────────┐    HTTP/JSON      ┌──────▼─────────┐
+│ Next.js │ ─────────────────►│  Go API        │
+│  dApp   │◄──────────────────│  REST          │
+└─────────┘                   └────────────────┘
+
+┌─────────────────┐  scheduled  ┌──────────────┐
+│ Go Reward Bot   │ ───────────►│ StakingVault │
+│ cron + EIP-1559 │             └──────────────┘
+└─────────────────┘
 ```
 
-## Status
+## Tech Stack
 
-✅ Phase 1 — Smart contracts (49 tests pass, 100% line/function coverage, fuzz + invariant)
-✅ Phase 2 — Indexer + DB schema
-✅ Phase 3 — REST API
-✅ Phase 4 — Reward bot
-✅ Phase 5 — dApp
-✅ Phase 6 — Subgraph + docs
+| Layer | Stack |
+|-------|-------|
+| **Smart Contracts** | Solidity 0.8.24 · Foundry · OpenZeppelin v5 |
+| **Indexer** | Go 1.21 · go-ethereum · PostgreSQL · pgx v5 |
+| **API** | Go · chi · Prometheus · zerolog |
+| **Reward Bot** | Go · robfig/cron · EIP-1559 dynamic fee · eth_call simulation · KMS-ready signer abstraction |
+| **Subgraph** | The Graph · AssemblyScript |
+| **Frontend** | Next.js 14 (App Router) · TypeScript · wagmi v2 · viem · RainbowKit · Tailwind |
+| **Devnet** | Anvil · Docker Compose |
+| **CI** | GitHub Actions · Slither static analysis · race-detector tests |
+| **Monitoring** | Prometheus · Grafana |
+
+## Highlights
+
+**Smart contracts**
+- 49 tests, **100 % line and function coverage**
+- 5 fuzz properties at 256 runs each, 3 invariants at ~128 k calls each
+- Slither clean (medium+ findings), forge fmt enforced in CI
+- Custom errors throughout (gas-friendly), gas snapshot committed
+
+**Indexer**
+- WebSocket-style log filtering, batched range processing (1 000 blocks/iteration)
+- 64-block hash trail with automatic rewind on reorg detection
+- Embedded SQL migrations — `go run` self-applies on startup
+- Prometheus metrics: `blocks_behind`, `events_processed_total{event}`, `reorgs_total`
+
+**Reward bot**
+- Pre-flight `eth_call` simulation — fail fast before paying gas
+- EIP-1559 dynamic fee (`baseFee × 2 + tip`) with hard cap
+- Dry-run mode for staging, signer abstraction (env-key today, KMS/HSM tomorrow)
+- Cron-driven; one configurable schedule expression
+
+**dApp**
+- One-click stake / unstake (auto-detect approval), live position card, history table
+- Multi-chain config (Anvil / Sepolia / Base Sepolia / Mainnet)
+- Tx hash + mining state inline; Max balance one-tap
+
+## Repository Layout
+
+```
+contracts/    Solidity + Foundry  (StakingVault, RewardDistributor, deploy script)
+backend/      Go monorepo         (cmd/indexer, cmd/api, cmd/rewardbot)
+frontend/     Next.js 14 dApp     (app router + wagmi + RainbowKit)
+subgraph/     The Graph subgraph  (schema + AssemblyScript mappings)
+docs/         Architecture, security, audit checklist, gas report, local-dev
+```
 
 ## Quick Start
 
-See [docs/local-dev.md](./docs/local-dev.md) for the full walkthrough. TL;DR:
+Full walkthrough in [docs/local-dev.md](./docs/local-dev.md). TL;DR:
 
 ```bash
-make bootstrap   # install Foundry deps, Go deps, frontend deps
-make up          # start Postgres + Anvil
-cd contracts && forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
-# In separate terminals:
+make bootstrap                            # install Foundry, Go, frontend deps
+make up                                   # Postgres + Anvil via docker compose
+cd contracts && forge script script/Deploy.s.sol \
+  --rpc-url http://localhost:8545 --broadcast
+
+# In separate terminals
 cd backend && go run ./cmd/indexer
 cd backend && go run ./cmd/api
-cd frontend && pnpm dev
+cd frontend && pnpm dev                   # http://localhost:3000
 ```
+
+## Testing
+
+```bash
+cd contracts
+forge test                                # 49 tests
+forge coverage --no-match-coverage 'test|mocks'   # 100 % lines / 100 % funcs
+forge test --match-path 'test/*.fuzz.t.sol'       # 5 fuzz × 256 runs
+forge test --match-path 'test/*.invariant.t.sol'  # 3 invariants × ~128 k calls
+slither contracts                         # clean for medium+
+```
+
+## Documentation
+
+- [Architecture & design decisions](./docs/architecture.md)
+- [Threat model & security](./docs/security.md)
+- [Pre-deployment audit checklist](./docs/audit-checklist.md)
+- [Gas report](./docs/gas-report.md)
+- [Local development walkthrough](./docs/local-dev.md)
 
 ## Why This Project
 
 DeFi engineering demands three things at once:
-1. **Smart contract security** — Solidity, OpenZeppelin patterns, fuzz/invariant testing, attack-vector awareness
-2. **Backend integration** — event indexing with reorg handling, signing, gas strategy, observability
-3. **Full-stack delivery** — dApp, API, infra, CI
 
-This repo is a single artifact that exercises all three at production quality.
+1. **Smart contract security** — Solidity discipline, OpenZeppelin patterns, fuzz/invariant testing, attack-vector awareness
+2. **Backend integration** — event indexing with reorg handling, transaction signing, gas strategy, observability
+3. **Full-stack delivery** — dApp, API, infrastructure, CI/CD
+
+This repo exercises all three at production quality, in a single artifact that is reproducible from a clean clone.
 
 ## License
 
-MIT
+[MIT](./LICENSE) — free to use, fork, modify, redistribute, and relicense, with attribution.
