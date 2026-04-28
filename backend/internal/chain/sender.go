@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
+	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/rs/zerolog/log"
@@ -55,8 +55,8 @@ func (s *TxSender) SendCall(ctx context.Context, to common.Address, data []byte,
 	}
 	maxFee := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), tip)
 
-	cap := new(big.Int).Mul(big.NewInt(s.MaxGasGwei), big.NewInt(1_000_000_000))
-	if maxFee.Cmp(cap) > 0 {
+	feeCap := new(big.Int).Mul(big.NewInt(s.MaxGasGwei), big.NewInt(1_000_000_000))
+	if maxFee.Cmp(feeCap) > 0 {
 		return common.Hash{}, fmt.Errorf("maxFee %s gwei exceeds cap %d", new(big.Int).Quo(maxFee, big.NewInt(1_000_000_000)).String(), s.MaxGasGwei)
 	}
 
@@ -96,6 +96,8 @@ func (s *TxSender) SendCall(ctx context.Context, to common.Address, data []byte,
 }
 
 // WaitForReceipt polls until the tx is mined or the context times out.
+// Distinguishes "not yet mined" (NotFound, retried) from real errors
+// (RPC failure, auth, etc., returned immediately).
 func (s *TxSender) WaitForReceipt(ctx context.Context, h common.Hash) (*types.Receipt, error) {
 	for {
 		select {
@@ -109,6 +111,9 @@ func (s *TxSender) WaitForReceipt(ctx context.Context, h common.Hash) (*types.Re
 				return r, errors.New("tx reverted")
 			}
 			return r, nil
+		}
+		if !errors.Is(err, ethereum.NotFound) {
+			return nil, fmt.Errorf("receipt fetch: %w", err)
 		}
 		time.Sleep(time.Second)
 	}

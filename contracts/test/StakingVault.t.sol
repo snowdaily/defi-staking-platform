@@ -215,9 +215,10 @@ contract StakingVaultTest is Test {
         // (the donation gets diluted across the virtual offset).
         assertGt(victimShares, 0, "Victim must receive shares despite donation");
 
-        // And victim's shares should redeem for substantially their deposit
+        // Victim's redemption value must be within 0.1% of their deposit.
+        // A regression that weakened the defense (e.g., offset=2) would fail here.
         uint256 redeemable = vault.convertToAssets(victimShares);
-        assertGt(redeemable, 900 ether, "Victim redemption value too low");
+        assertApproxEqRel(redeemable, 1000 ether, 1e15, "Victim redemption value below 99.9% of deposit");
     }
 
     /*//////////////////////////////////////////////////////////////

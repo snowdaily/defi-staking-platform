@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"math/big"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -91,6 +90,9 @@ func (h *Handler) GetAPR(w http.ResponseWriter, r *http.Request) {
 		pts = append(pts, pt{t, f})
 	}
 
+	// Need at least two points spanning ≥ 1 day. Shorter windows extrapolate
+	// noise into wild APR numbers (e.g., 1 hour × 0.001% growth → 9000% APR).
+	const minWindowDays = 1.0
 	if len(pts) < 2 {
 		writeJSON(w, http.StatusOK, map[string]any{"aprPct": 0, "windowDays": 0, "points": len(pts)})
 		return
@@ -100,15 +102,20 @@ func (h *Handler) GetAPR(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"aprPct": 0, "windowDays": 0, "points": len(pts)})
 		return
 	}
-
-	// growth = last/first
-	growth := new(big.Float).Quo(last.r, first.r)
-	growth.Sub(growth, big.NewFloat(1)) // delta fraction over window
 	dt := last.t.Sub(first.t).Hours() / 24
-	if dt <= 0 {
-		writeJSON(w, http.StatusOK, map[string]any{"aprPct": 0, "windowDays": 0, "points": len(pts)})
+	if dt < minWindowDays {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"aprPct":     0,
+			"windowDays": dt,
+			"points":     len(pts),
+			"note":       "insufficient window",
+		})
 		return
 	}
+
+	// growth = last/first - 1
+	growth := new(big.Float).Quo(last.r, first.r)
+	growth.Sub(growth, big.NewFloat(1))
 	annualised := new(big.Float).Quo(growth, big.NewFloat(dt))
 	annualised.Mul(annualised, big.NewFloat(365))
 	annualised.Mul(annualised, big.NewFloat(100))
@@ -122,6 +129,13 @@ func (h *Handler) GetAPR(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET /users/{addr}/position
+//
+// Returns: cumulative flows + current net share holding + an estimated current
+// underlying value computed from the latest exchange-rate snapshot.
+//
+// The frontend should still treat the on-chain `convertToAssets(shares)` as the
+// authoritative current value — this endpoint exists for analytics, charts, and
+// "did anything happen?" sanity, not for transaction sizing.
 func (h *Handler) GetUserPosition(w http.ResponseWriter, r *http.Request) {
 	addrStr := chi.URLParam(r, "addr")
 	if !common.IsHexAddress(addrStr) {
@@ -129,25 +143,57 @@ func (h *Handler) GetUserPosition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	addr := common.HexToAddress(addrStr)
+	ctx := r.Context()
 
 	var depositsAssets, withdrawalsAssets string
-	if err := h.Pool.QueryRow(r.Context(),
-		`SELECT COALESCE(SUM(assets), 0)::text FROM deposits WHERE owner=$1`, addr.Bytes(),
-	).Scan(&depositsAssets); err != nil {
+	var depositsShares, withdrawalsShares string
+	if err := h.Pool.QueryRow(ctx,
+		`SELECT COALESCE(SUM(assets), 0)::text, COALESCE(SUM(shares), 0)::text
+         FROM deposits WHERE owner=$1`, addr.Bytes(),
+	).Scan(&depositsAssets, &depositsShares); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := h.Pool.QueryRow(r.Context(),
-		`SELECT COALESCE(SUM(assets), 0)::text FROM withdrawals WHERE owner=$1`, addr.Bytes(),
-	).Scan(&withdrawalsAssets); err != nil {
+	if err := h.Pool.QueryRow(ctx,
+		`SELECT COALESCE(SUM(assets), 0)::text, COALESCE(SUM(shares), 0)::text
+         FROM withdrawals WHERE owner=$1`, addr.Bytes(),
+	).Scan(&withdrawalsAssets, &withdrawalsShares); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
+	netShares, _ := new(big.Int).SetString(depositsShares, 10)
+	if netShares == nil {
+		netShares = big.NewInt(0)
+	}
+	if w2, ok := new(big.Int).SetString(withdrawalsShares, 10); ok {
+		netShares.Sub(netShares, w2)
+	}
+
+	// Estimate current underlying value using the most recent snapshot.
+	// rate_e27 = totalAssets * 1e27 / totalSupply (see indexer/snapshot.go).
+	// underlyingNow = netShares * rate_e27 / 1e27
+	var rateE27Str string
+	estimated := big.NewInt(0)
+	if err := h.Pool.QueryRow(ctx,
+		`SELECT rate_e27::text FROM exchange_rate_snapshots
+         ORDER BY timestamp DESC LIMIT 1`,
+	).Scan(&rateE27Str); err == nil {
+		if rateE27, ok := new(big.Int).SetString(rateE27Str, 10); ok {
+			scale := new(big.Int).Exp(big.NewInt(10), big.NewInt(27), nil)
+			estimated = new(big.Int).Mul(netShares, rateE27)
+			estimated.Quo(estimated, scale)
+		}
+	}
+
+	// Use EIP-55 checksummed hex for the address echo so wallets/explorers
+	// don't have to normalise it.
 	writeJSON(w, http.StatusOK, map[string]any{
-		"address":           strings.ToLower(addr.Hex()),
-		"totalDeposited":    depositsAssets,
-		"totalWithdrawn":    withdrawalsAssets,
+		"address":                addr.Hex(),
+		"totalDeposited":         depositsAssets,
+		"totalWithdrawn":         withdrawalsAssets,
+		"netShares":              netShares.String(),
+		"estimatedUnderlyingNow": estimated.String(),
 	})
 }
 
@@ -219,7 +265,8 @@ func (h *Handler) GetRecentRewards(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		e.Operator = strings.ToLower(common.BytesToAddress(op).Hex())
+		// EIP-55 checksummed hex, not lowercase: explorers/wallets expect this.
+		e.Operator = common.BytesToAddress(op).Hex()
 		out = append(out, e)
 	}
 	writeJSON(w, http.StatusOK, out)

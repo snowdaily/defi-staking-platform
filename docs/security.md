@@ -25,13 +25,18 @@ Living document. Updated as the codebase evolves.
 - Checks-Effects-Interactions ordering
 - Pull pattern for any user-claimable rewards
 
-### 3. Reward Manipulation / Front-Running
-**Vector**: Attacker front-runs `distributeRewards()` to deposit just before, withdraws right after.
+### 3. Reward Sandwich / Front-Running (NOT MITIGATED in v1)
+**Vector**: Attacker observes a pending `distributeRewards(amount)` tx in the public mempool. They deposit in the same block (in front of the operator's tx), wait for the reward to land, then redeem in the next block. Because rewards land as a step-function increase in `totalAssets`, the attacker captures yield they did not earn for the full duration the funds were supposedly staked.
 
-**Mitigation**:
-- Cooldown / lock-up on withdrawals (configurable)
-- Distribute rewards over a window (drip) instead of step function
-- Document this as a known economic property if drip not used
+**Status**: **Known limitation of v1.** No mitigation is implemented in code. This must be addressed before any mainnet deployment.
+
+**Mitigations to implement before production** (any of these, ranked by effectiveness):
+1. **Reward streaming** (preferred — used by Synthetix StakingRewards, sFrxETH): operator calls `notifyRewardAmount(amount, duration)`; rewards accrue linearly across `duration` instead of landing in one block.
+2. **Withdrawal cooldown / queue**: redemption requires waiting N blocks after deposit, breaking the deposit→reward→redeem cycle.
+3. **Private mempool / Flashbots**: operator submits the reward tx through a private relay so the mempool front-run window is closed.
+4. **Commit/reveal**: operator commits to reward amount one block before revealing it, so attackers cannot deposit reactively.
+
+**emergencyWithdraw note**: because `emergencyWithdraw` deliberately bypasses pause, this attack cannot be stopped by a paused vault. Reward streaming (mitigation 1) is the only architectural fix that does not weaken the emergency exit.
 
 ### 4. Rounding Errors
 **Vector**: Repeated deposit/withdraw of dust amounts to drain rounding.

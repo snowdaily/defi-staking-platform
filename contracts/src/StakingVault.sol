@@ -106,6 +106,12 @@ contract StakingVault is ERC4626, AccessControl, Pausable, ReentrancyGuard {
     ///         the share/asset exchange rate for all current holders.
     /// @dev    Caller must hold OPERATOR_ROLE and have approved this contract
     ///         for at least `amount` of the underlying asset.
+    /// @dev    KNOWN LIMITATION (v1): step-function distribution. A user who
+    ///         deposits in the same block (front-running this call) and
+    ///         redeems immediately after captures yield they did not earn.
+    ///         Production mitigations (NOT implemented here): reward streaming
+    ///         (Synthetix accumulator), withdraw cooldown, commit/reveal, or
+    ///         private mempool. See docs/security.md "Reward sandwich".
     function distributeRewards(uint256 amount) external onlyRole(OPERATOR_ROLE) nonReentrant {
         if (amount == 0) revert ZeroAmount();
         IERC20(asset()).safeTransferFrom(msg.sender, address(this), amount);

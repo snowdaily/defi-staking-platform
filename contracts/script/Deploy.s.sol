@@ -19,23 +19,31 @@ import {MockERC20} from "../test/mocks/MockERC20.sol";
 contract Deploy is Script {
     function run() external returns (MockERC20 asset, StakingVault vault, RewardDistributor distributor) {
         uint256 pk = vm.envOr("DEPLOYER_PRIVATE_KEY", uint256(0));
-        address deployer;
         if (pk == 0) {
-            // Default Anvil account #0 — only safe for local devnet.
+            // Default Anvil account #0 — ONLY safe for local devnet.
             pk = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
         }
-        deployer = vm.addr(pk);
+        address deployer = vm.addr(pk);
+
+        // For production, separate ADMIN_ADDRESS and OPERATOR_ADDRESS into
+        // distinct (multisig) keys. For local dev, fall back to the deployer.
+        address admin = vm.envOr("ADMIN_ADDRESS", deployer);
+        address operator = vm.envOr("OPERATOR_ADDRESS", deployer);
 
         vm.startBroadcast(pk);
 
         asset = new MockERC20("Mock USD", "mUSD", 18);
-        vault = new StakingVault(IERC20(address(asset)), "Staked Mock USD", "stmUSD", deployer, deployer);
-        distributor = new RewardDistributor(vault, deployer, deployer);
+        vault = new StakingVault(IERC20(address(asset)), "Staked Mock USD", "stmUSD", admin, operator);
+        distributor = new RewardDistributor(vault, admin, operator);
 
         // Wire the distributor as a vault operator so it can call distributeRewards.
+        // Granted by `admin`, so when ADMIN_ADDRESS is overridden via env we
+        // need that signer to broadcast this call. Keep deployer == admin in
+        // local dev to make the script single-key by default.
         vault.grantRole(vault.OPERATOR_ROLE(), address(distributor));
 
-        // Seed deployer with some initial test funds (only useful on dev networks).
+        // Seed deployer with some initial test funds (dev convenience; the
+        // MockERC20 is open-mint anyway).
         asset.mint(deployer, 1_000_000 ether);
 
         vm.stopBroadcast();
@@ -44,5 +52,7 @@ contract Deploy is Script {
         console2.log("Vault       :", address(vault));
         console2.log("Distributor :", address(distributor));
         console2.log("Deployer    :", deployer);
+        console2.log("Admin       :", admin);
+        console2.log("Operator    :", operator);
     }
 }

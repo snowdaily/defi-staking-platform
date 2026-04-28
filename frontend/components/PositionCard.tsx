@@ -1,7 +1,7 @@
 "use client";
 
 import { useAccount, useReadContract } from "wagmi";
-import { vaultAbi, VAULT_ADDRESS } from "@/lib/contracts";
+import { vaultAbi, erc20Abi, VAULT_ADDRESS, ASSET_ADDRESS } from "@/lib/contracts";
 import { fmt } from "@/lib/format";
 
 export function PositionCard() {
@@ -26,17 +26,31 @@ export function PositionCard() {
     abi: vaultAbi,
     functionName: "decimals",
   });
+  const { data: assetDecimals } = useReadContract({
+    address: ASSET_ADDRESS,
+    abi: erc20Abi,
+    functionName: "decimals",
+  });
+  const { data: assetSymbol } = useReadContract({
+    address: ASSET_ADDRESS,
+    abi: erc20Abi,
+    functionName: "symbol",
+  });
 
   if (!address) {
     return <div className="panel text-white/50">Connect a wallet to see your position.</div>;
   }
 
+  const sym = assetSymbol ?? "";
   return (
     <div className="panel">
       <div className="text-xs uppercase tracking-wider text-white/50">Your position</div>
       <div className="mt-3 space-y-2">
-        <Row label="Shares (stMOCK)" value={fmt(shares, Number(vaultDecimals ?? 24), 4)} />
-        <Row label="Underlying value" value={fmt(assetsForShares as bigint | undefined, 18, 4) + " MOCK"} />
+        <Row label={`Shares (st${sym})`} value={fmt(shares, Number(vaultDecimals ?? 24), 4)} />
+        <Row
+          label="Underlying value"
+          value={fmt(assetsForShares as bigint | undefined, Number(assetDecimals ?? 18), 4) + " " + sym}
+        />
       </div>
     </div>
   );

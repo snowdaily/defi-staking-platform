@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -151,6 +152,12 @@ func (i *Indexer) processRange(ctx context.Context, from, to uint64) error {
 		}); err != nil {
 			return err
 		}
+		// Persist an exchange-rate snapshot once per processed range.
+		// Used by the /tvl and /apr endpoints. Failure here is logged but
+		// does not block the cursor — the next range will retry.
+		if err := snapshotExchangeRate(ctx, i.chain, i.pool, to, time.Unix(int64(hdr.Time), 0).UTC()); err != nil {
+			log.Warn().Err(err).Uint64("block", to).Msg("snapshot exchange rate failed")
+		}
 	}
 	return nil
 }
@@ -211,15 +218,22 @@ func (i *Indexer) detectReorg(ctx context.Context) error {
 	to := from
 	from = to - depth + 1
 
-	for n := to; n >= from; n-- {
+	// Walk from oldest to newest in our trail window so we always start the
+	// scan at a known block, and the loop bound is explicit (no uint64 underflow).
+	for n := from; n <= to; n++ {
 		hdr, err := i.chain.HeaderAt(ctx, n)
 		if err != nil {
 			return err
 		}
 		var stored []byte
-		err = i.pool.QueryRow(ctx, "SELECT block_hash FROM block_trail WHERE block_number=$1", n).Scan(&stored)
-		if err != nil {
-			return nil // no trail at this depth — nothing to compare
+		row := i.pool.QueryRow(ctx, "SELECT block_hash FROM block_trail WHERE block_number=$1", n)
+		switch err := row.Scan(&stored); err {
+		case nil:
+			// found — compare below
+		case pgx.ErrNoRows:
+			continue
+		default:
+			return err
 		}
 		if hdr.Hash() != common.BytesToHash(stored) {
 			reorgs.Inc()
@@ -227,7 +241,6 @@ func (i *Indexer) detectReorg(ctx context.Context) error {
 			if err := db.PruneBlocksFrom(ctx, i.pool, n); err != nil {
 				return err
 			}
-			// Move cursor back so next loop re-ingests from `n`.
 			return db.UpsertIndexerState(ctx, i.pool, db.IndexerState{
 				Contract:      contractKey,
 				LastBlock:     n - 1,

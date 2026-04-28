@@ -38,7 +38,9 @@ func main() {
 	}
 
 	var signer chain.Signer
-	if !cfg.DryRun {
+	if cfg.DryRun {
+		signer = chain.DryRunSigner{}
+	} else {
 		signer, err = chain.NewEnvSigner(cfg.OperatorPrivateKey)
 		if err != nil {
 			log.Fatal().Err(err).Msg("signer")
@@ -82,7 +84,9 @@ func main() {
 		log.Info().Str("tx", h.Hex()).Uint64("block", r.BlockNumber.Uint64()).Msg("reward distributed")
 	}
 
-	cr := cron.New(cron.WithSeconds())
+	// Standard 5-field cron expressions (minute hour dom month dow).
+	// Default config uses "0 */6 * * *" — every 6 hours on the hour.
+	cr := cron.New()
 	if _, err := cr.AddFunc(cfg.RewardSchedule, job); err != nil {
 		log.Fatal().Err(err).Msg("cron")
 	}
