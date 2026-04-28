@@ -13,15 +13,6 @@ import (
 // Pool aliases the pgxpool type so callers don't import it directly.
 type Pool = pgxpool.Pool
 
-// Tx is a transactional handle.
-type Tx interface {
-	Exec(ctx context.Context, sql string, args ...any) (pgx.CommandTag, error)
-	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
-	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
-	Commit(ctx context.Context) error
-	Rollback(ctx context.Context) error
-}
-
 type IndexerState struct {
 	Contract      string
 	LastBlock     uint64

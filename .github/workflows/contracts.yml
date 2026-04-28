@@ -24,6 +24,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          forge install --no-git --shallow foundry-rs/forge-std@v1.16.0
           forge install --no-git --shallow OpenZeppelin/openzeppelin-contracts@v5.1.0
           forge install --no-git --shallow OpenZeppelin/openzeppelin-contracts-upgradeable@v5.1.0
 
@@ -54,6 +55,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          forge install --no-git --shallow foundry-rs/forge-std@v1.16.0
           forge install --no-git --shallow OpenZeppelin/openzeppelin-contracts@v5.1.0
           forge install --no-git --shallow OpenZeppelin/openzeppelin-contracts-upgradeable@v5.1.0
 
