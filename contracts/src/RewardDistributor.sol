@@ -59,6 +59,9 @@ contract RewardDistributor is AccessControl, ReentrancyGuard {
     /// @notice Distribute the full held balance to the vault.
     function distributeAll() external onlyRole(OPERATOR_ROLE) nonReentrant returns (uint256 amount) {
         amount = asset.balanceOf(address(this));
+        // slither-disable-next-line incorrect-equality
+        // Reading the contract's own ERC-20 balance and comparing to zero is the
+        // intended sentinel — there is no oracle dependency or rounding to abuse.
         if (amount == 0) revert ZeroAmount();
         vault.distributeRewards(amount);
         emit Distributed(msg.sender, amount);
