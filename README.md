@@ -7,9 +7,9 @@
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.24-363636?logo=solidity)](https://soliditylang.org/)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)](#testing)
 
-Production-grade liquid staking protocol — full on-chain + off-chain stack in a single repo. Built to demonstrate end-to-end DeFi engineering: secure smart contracts, reorg-aware indexing, signing/gas-aware backend services, and a polished dApp.
+Portfolio-quality liquid staking protocol — full on-chain + off-chain stack in a single repo. Implements **production engineering practices** (ERC-4626, fuzz + invariant testing, reorg-aware indexing, signer abstraction, full CI) but is **not audited and not production-deployed**.
 
-> **Disclaimer.** This is a portfolio / educational project. The contracts have **not** been externally audited. Do not deploy to mainnet with real funds without a professional audit and bug bounty program. See [docs/audit-checklist.md](./docs/audit-checklist.md) for the pre-deployment gate.
+> **Disclaimer.** This is a portfolio / educational project. The contracts have **not** been externally audited and the protocol has **not** been deployed to mainnet. Do not deploy with real funds without a professional audit, bug bounty program, multisig admin, reward-streaming mitigation for the front-running vector documented in [docs/security.md](./docs/security.md), and the rest of [docs/audit-checklist.md](./docs/audit-checklist.md).
 
 ---
 
@@ -134,11 +134,31 @@ slither contracts                         # clean for medium+
 
 DeFi engineering demands three things at once:
 
-1. **Smart contract security** — Solidity discipline, OpenZeppelin patterns, fuzz/invariant testing, attack-vector awareness
+1. **Smart contract security** — Solidity discipline, OpenZeppelin patterns, fuzz / invariant testing, attack-vector awareness
 2. **Backend integration** — event indexing with reorg handling, transaction signing, gas strategy, observability
-3. **Full-stack delivery** — dApp, API, infrastructure, CI/CD
+3. **Full-stack delivery** — dApp, API, infrastructure, CI / CD
 
-This repo exercises all three at production quality, in a single artifact that is reproducible from a clean clone.
+This repo exercises all three with production engineering patterns, in a single reproducible artifact.
+
+## What This Repo Is — And Is Not
+
+**Is**: a working ERC-4626 vault + indexer + API + reward bot + dApp with reproducible CI; an honest demonstration of how each layer is built; a starting point another engineer can read end-to-end in an afternoon.
+
+**Is not**: a deployable product. The gap between "production engineering practices" and "production-deployed" is real, and this repo does not try to hide it. The known gaps before mainnet are:
+
+| Gap | Severity | Where it's documented |
+|-----|----------|-----------------------|
+| Reward sandwich / front-running of `distributeRewards` | High | [docs/security.md §3](./docs/security.md) |
+| No external audit / bug bounty | Blocker | [docs/audit-checklist.md](./docs/audit-checklist.md) |
+| Single admin/operator key (should be multisig + timelock) | High | `script/Deploy.s.sol` env-driven, but no Safe wiring |
+| `MockERC20` is open-mint — testing only | Blocker | `test/mocks/MockERC20.sol` |
+| Reward bot has no stuck-tx replacement / nonce manager | Medium | `internal/chain/sender.go` |
+| Mock yield source — no real validator delegation | Architectural | This is v1 by design |
+| No HA on Postgres / RPC, no oncall, no SOC2 | Operational | Out of scope for v1 |
+
+The cost of going from here to "$1M TVL on mainnet" is roughly: 2 independent audits ($150k–300k), reward-streaming refactor (2 weeks), multisig + timelock wiring (1 week), real yield-source integration (4–8 weeks), HA infra + monitoring + oncall (4 weeks), Immunefi bounty, and legal review.
+
+Knowing what's missing is part of the work this repo demonstrates.
 
 ## License
 
