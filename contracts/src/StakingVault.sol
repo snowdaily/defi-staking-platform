@@ -66,24 +66,12 @@ contract StakingVault is ERC4626, AccessControl, Pausable, ReentrancyGuard {
                           ERC-4626 OVERRIDES
     //////////////////////////////////////////////////////////////*/
 
-    function deposit(uint256 assets, address receiver)
-        public
-        override
-        whenNotPaused
-        nonReentrant
-        returns (uint256)
-    {
+    function deposit(uint256 assets, address receiver) public override whenNotPaused nonReentrant returns (uint256) {
         if (assets == 0) revert ZeroAmount();
         return super.deposit(assets, receiver);
     }
 
-    function mint(uint256 shares, address receiver)
-        public
-        override
-        whenNotPaused
-        nonReentrant
-        returns (uint256)
-    {
+    function mint(uint256 shares, address receiver) public override whenNotPaused nonReentrant returns (uint256) {
         if (shares == 0) revert ZeroAmount();
         return super.mint(shares, receiver);
     }

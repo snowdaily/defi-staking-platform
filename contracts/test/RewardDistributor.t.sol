@@ -125,9 +125,7 @@ contract RewardDistributorTest is Test {
         vm.prank(funder);
         distributor.fund(500 ether);
         vm.prank(alice);
-        vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, alice, opRole)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, alice, opRole));
         distributor.distribute(100 ether);
     }
 
