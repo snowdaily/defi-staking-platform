@@ -1,0 +1,51 @@
+type Deposit @entity(immutable: true) {
+  id: Bytes!
+  sender: Bytes!
+  owner: User!
+  assets: BigInt!
+  shares: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  txHash: Bytes!
+}
+
+type Withdrawal @entity(immutable: true) {
+  id: Bytes!
+  sender: Bytes!
+  receiver: Bytes!
+  owner: User!
+  assets: BigInt!
+  shares: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  txHash: Bytes!
+}
+
+type RewardEvent @entity(immutable: true) {
+  id: Bytes!
+  operator: Bytes!
+  amount: BigInt!
+  totalAssetsAfter: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  txHash: Bytes!
+}
+
+type User @entity {
+  id: Bytes!
+  totalDeposited: BigInt!
+  totalWithdrawn: BigInt!
+  depositCount: Int!
+  withdrawCount: Int!
+  deposits: [Deposit!]! @derivedFrom(field: "owner")
+  withdrawals: [Withdrawal!]! @derivedFrom(field: "owner")
+}
+
+type VaultMetric @entity {
+  id: Bytes!  # constant key — there is only one row
+  totalDeposited: BigInt!
+  totalWithdrawn: BigInt!
+  totalRewards: BigInt!
+  lastTotalAssets: BigInt!
+  updatedAt: BigInt!
+}

@@ -1,0 +1,47 @@
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/lib/
+contracts/lcov.info
+
+# Node / Frontend
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+*.tsbuildinfo
+.vercel
+
+# Go
+backend/bin/
+*.test
+coverage.out
+coverage.html
+
+# Subgraph
+subgraph/build/
+subgraph/generated/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+keystore/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Docker
+.docker-data/

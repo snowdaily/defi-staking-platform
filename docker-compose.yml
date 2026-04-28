@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: staking
+      POSTGRES_PASSWORD: staking
+      POSTGRES_DB: staking
+    ports:
+      - "5432:5432"
+    volumes:
+      - .docker-data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U staking"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    command: "anvil --host 0.0.0.0 --block-time 2"
+    ports:
+      - "8545:8545"
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./scripts/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    profiles: ["monitoring"]
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - .docker-data/grafana:/var/lib/grafana
+    profiles: ["monitoring"]
