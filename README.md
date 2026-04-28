@@ -9,6 +9,8 @@
 
 Production-grade liquid staking protocol — full on-chain + off-chain stack in a single repo. Built to demonstrate end-to-end DeFi engineering: secure smart contracts, reorg-aware indexing, signing/gas-aware backend services, and a polished dApp.
 
+> **Disclaimer.** This is a portfolio / educational project. The contracts have **not** been externally audited. Do not deploy to mainnet with real funds without a professional audit and bug bounty program. See [docs/audit-checklist.md](./docs/audit-checklist.md) for the pre-deployment gate.
+
 ---
 
 ## What It Does
